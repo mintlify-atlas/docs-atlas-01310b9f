@@ -1,7 +1,7 @@
 ---
 title: "OllamaTextModel: Text and Vision Generation Reference"
 sidebarTitle: "OllamaTextModel"
-description: "OllamaTextModel handles text generation and streaming for any Ollama-installed model via Chat Completions or the Responses API, with vision, tools, reasoning, and structured output."
+description: "OllamaTextModel generates and streams text via Chat Completions or the Responses API, with vision, tool calling, reasoning, and structured output support."
 ---
 
 `OllamaTextModel` is the internal model class created by `OllamaProvider` when a text generation request is made. It implements `TextModelInterface` and handles both non-streaming and streaming generation, routing requests through either Ollama's OpenAI-compatible Chat Completions endpoint or the Responses API depending on configuration.
@@ -78,9 +78,8 @@ Returns the model ID string that was passed at construction — for example `'ll
 
 Each request is routed to one of two Ollama API backends. The API is resolved in the following order:
 
-1. **Per-request override** — if `$request->providerOptionsFor('ollama')['api']` is set, that value is used.
-2. **Global default** — falls back to `$this->options->api` (configured at provider creation time via `Ollama::create(['api' => ...])`).
-3. The raw string value is normalised to an `OllamaApi` enum case via `OllamaApi::resolve()`.
+1. **Per-request override** — if `$request->providerOptionsFor('ollama')['api']` is set, that string is normalised to an `OllamaApi` enum case via `OllamaApi::resolve()` and used for the request.
+2. **Global default** — if no per-request override is present, the already-resolved `$this->options->api` enum (set at provider creation time via `Ollama::create(['api' => ...])`) is used directly.
 
 ```php
 // Set globally at provider creation

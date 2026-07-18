@@ -1,7 +1,7 @@
 ---
 title: "OllamaImageModel: Experimental Image Generation Reference"
 sidebarTitle: "OllamaImageModel"
-description: "OllamaImageModel sends experimental image generation requests to Ollama's OpenAI-compatible /images/generations endpoint using a strict subset of allowed fields."
+description: "OllamaImageModel posts to Ollama's experimental /images/generations endpoint and restricts the request to only the four fields Ollama currently accepts."
 ---
 
 `OllamaImageModel` implements `ImageModelInterface` and sends requests to Ollama's experimental OpenAI-compatible `/images/generations` endpoint. Because Ollama's image generation support is still evolving, the adapter deliberately restricts the outgoing request to only the fields Ollama currently accepts — all other fields are stripped before the request is sent.

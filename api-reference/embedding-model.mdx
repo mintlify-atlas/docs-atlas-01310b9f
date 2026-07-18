@@ -1,7 +1,7 @@
 ---
-title: "OllamaEmbeddingModel: Native Embeddings Reference"
+title: "OllamaEmbeddingModel: Native Embed Endpoint Reference"
 sidebarTitle: "OllamaEmbeddingModel"
-description: "OllamaEmbeddingModel sends embedding requests to Ollama's native /api/embed endpoint, supporting batch inputs, dimension control, and provider-specific options."
+description: "OllamaEmbeddingModel posts to Ollama's native /api/embed endpoint with batch input support, dimension control, and provider-specific pass-through options."
 ---
 
 `OllamaEmbeddingModel` implements `EmbeddingModelInterface` and sends requests to Ollama's native `/api/embed` endpoint — not the OpenAI-compatible path. It supports both single and batch inputs, optional dimension control, and provider-specific pass-through options such as `truncate` and `keep_alive`.

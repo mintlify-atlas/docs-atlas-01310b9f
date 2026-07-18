@@ -54,7 +54,7 @@ Ollama::create([
 ```
 
 <Note>
-  `apiKey` takes priority over `headers`. When both are provided, `authHeaders()` prepends the `Authorization` header from `apiKey` before the custom `headers` array using `array_merge`. If your custom `headers` array also contains an `Authorization` key, the `apiKey` value wins — it appears first and the later duplicate is discarded by PHP's `array_merge` behavior.
+  When both `apiKey` and a custom `Authorization` entry in `headers` are provided, `authHeaders()` calls `array_merge(['Authorization' => 'Bearer '.$apiKey], $headers)`. Because PHP `array_merge` lets later string keys overwrite earlier ones, a conflicting `Authorization` key in `headers` will override the `apiKey` value. To rely on `apiKey` for authentication, omit `Authorization` from the `headers` array.
 </Note>
 
 <Tip>

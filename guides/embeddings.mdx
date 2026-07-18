@@ -1,7 +1,7 @@
 ---
 title: "Generate Embeddings with Ollama's Native PHP API"
 sidebarTitle: "Embeddings"
-description: "Create single or batch text embeddings using Ollama's native /api/embed endpoint, with optional dimension control and provider-specific options like truncate and keep_alive."
+description: "Create single or batch text embeddings using Ollama's native /api/embed endpoint, with dimension control and provider options like truncate and keep_alive."
 ---
 
 Ollama embeddings use the native `/api/embed` endpoint rather than the OpenAI-compatible one. This means the request and response format follow Ollama's own schema, and batching multiple inputs in a single call is supported natively — Ollama returns one embedding vector per input in the same response.
@@ -59,6 +59,7 @@ The returned `EmbeddingResponse` exposes the following fields:
 - **`$result->output->vector`** — Shorthand for `$result->embeddings[0]->vector`, the vector for the first (or only) input.
 - **`$result->usage->inputTokens`** — The number of prompt tokens evaluated, taken from Ollama's `prompt_eval_count` field.
 - **`$result->providerMetadata['ollama']`** — Provider-specific metadata returned by Ollama:
+  - `model` — The model name as reported by Ollama, falling back to the requested model ID if the server omits it.
   - `total_duration` — Total request duration in nanoseconds.
   - `load_duration` — Time spent loading the model into memory, in nanoseconds.
 

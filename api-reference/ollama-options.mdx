@@ -1,7 +1,7 @@
 ---
 title: "OllamaOptions: Configuration Value Object Reference"
 sidebarTitle: "OllamaOptions"
-description: "OllamaOptions is an immutable configuration DTO holding all provider settings. Build one with OllamaOptions::fromArray() and pass it to OllamaProvider directly."
+description: "OllamaOptions is an immutable value object holding all Ollama provider settings. Build one with fromArray() and pass it to OllamaProvider."
 ---
 
 `OllamaOptions` is the configuration value object for the Ollama provider. All properties are declared `readonly`, making every instance fully immutable after construction. You can create an instance directly via `OllamaOptions::fromArray()`, or let `Ollama::create()` build one internally from the config array you pass to it.
@@ -111,7 +111,7 @@ $options = OllamaOptions::fromArray([
 public function authHeaders(): array<string, string>
 ```
 
-Returns the complete set of authentication and custom headers to be sent with every request. When `apiKey` is non-null, `Authorization: Bearer {apiKey}` is prepended to the `headers` array using `array_merge`, ensuring it appears first. Any keys in `headers` that duplicate `Authorization` will be overridden by the prepended value.
+Returns the complete set of authentication and custom headers to be sent with every request. When `apiKey` is non-null, `Authorization: Bearer {apiKey}` is prepended to the `headers` array using `array_merge`, ensuring it appears first. Because `array_merge` lets later string keys overwrite earlier ones, any `Authorization` key present in `headers` will take precedence over the prepended value — avoid setting `Authorization` in `headers` when `apiKey` is also set.
 
 ```php
 $headers = $options->authHeaders();

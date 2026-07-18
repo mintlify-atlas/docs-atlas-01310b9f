@@ -88,7 +88,7 @@ Calls the Ollama server's `/api/tags` endpoint and returns an array of `ModelDef
 public static function inspectModel(string $modelId): ModelDefinition
 ```
 
-Calls the Ollama server's `/api/show` endpoint for the specified model and returns a `ModelDefinition` with mapped SDK capabilities and full metadata. Capability mapping translates Ollama's native capability strings (`completion`, `vision`, `tools`, `thinking`, `embedding`, `image`) into typed `AiSdk\Capability` enum values. See [Model Discovery](/guides/model-discovery) for the full mapping table.
+Calls the Ollama server's `/api/show` endpoint for the specified model and returns a `ModelDefinition` with mapped SDK capabilities and full metadata. Capability mapping translates Ollama's native capability strings (`completion`, `vision`, `audio`, `tools`, `thinking`, `image`, `image_generation`, `embedding`) into typed `AiSdk\Capability` enum values. See [OllamaProvider](/api-reference/ollama-provider) for the full mapping table.
 
 <ParamField body="modelId" type="string" required>
   The model identifier to inspect (e.g. `'llava'`, `'llama3.2'`).
@@ -127,7 +127,7 @@ Returns the current singleton `OllamaProvider`. If no provider has been configur
 public static function reset(): void
 ```
 
-Clears the singleton provider by setting the internal `$default` property to `null`. The next call to any static method that requires a provider will lazily re-initialize it. This method is essential in test suites to prevent state leaking between test cases.
+Clears the singleton provider by setting the static `$default` property to `null`. The next call to any static method that requires a provider will lazily re-initialize it. This method is essential in test suites to prevent state leaking between test cases.
 
 <ResponseField name="return" type="void" />
 

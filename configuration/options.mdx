@@ -1,7 +1,7 @@
 ---
 title: "Configure the Ollama PHP SDK Provider: URLs and Options"
 sidebarTitle: "Options"
-description: "Configure the Ollama provider with custom base URLs, API selection, HTTP headers, and SDK instance binding using Ollama::create() or OllamaOptions::fromArray()."
+description: "Configure the Ollama provider with custom base URLs, API selection, HTTP headers, and SDK instance binding using Ollama::create() or OllamaOptions."
 ---
 
 The Ollama provider can be configured in two ways: through **environment variables** that are loaded automatically at runtime, or through **`Ollama::create(array $config)`** for programmatic control. Both approaches ultimately build an `OllamaOptions` instance (via `OllamaOptions::fromArray()`) that is stored as the process-level default and used by all subsequent provider calls.
@@ -51,7 +51,7 @@ Ollama::create([
 </ParamField>
 
 <ParamField body="headers" type="array" optional>
-  Additional HTTP headers merged into every outbound request. When `apiKey` is also set, the `Authorization` header from `apiKey` is prepended first, so a conflicting `Authorization` entry in `headers` is overridden by `apiKey`.
+  Additional HTTP headers merged into every outbound request. When `apiKey` is also set, the `Authorization` header from `apiKey` is added first via `array_merge`; because PHP `array_merge` lets later string keys overwrite earlier ones, a conflicting `Authorization` entry in `headers` will override the `apiKey` value.
 </ParamField>
 
 <ParamField body="sdk" type="Sdk" optional>

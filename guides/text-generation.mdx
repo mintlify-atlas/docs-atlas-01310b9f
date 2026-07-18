@@ -1,0 +1,92 @@
+---
+title: "Text Generation with Ollama and the PHP AI SDK"
+sidebarTitle: "Text Generation"
+description: "Generate text from any Ollama-installed model using Chat Completions or the Responses API, with support for vision, tool calling, reasoning effort, and structured output."
+---
+
+This guide covers how to generate text with the `aisdk/ollama` provider. It works with any model installed on your Ollama server — the package treats model IDs as opaque values and ships no model inventory of its own. Use `Ollama::model()` to reference any identifier your server recognises.
+
+## Basic text generation
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+$result = Generate::text()
+    ->model(Ollama::model('llama3.2'))
+    ->prompt('Explain closures in PHP.')
+    ->run();
+
+echo $result->text;
+```
+
+## Choosing an API endpoint
+
+Ollama exposes two OpenAI-compatible API surfaces. The default is `OllamaApi::ChatCompletions` (`chat_completions`). You can switch to the Responses API globally when creating the provider:
+
+```php
+Ollama::create(['api' => 'responses']);
+```
+
+Or override the endpoint on a per-request basis using `providerOptions()`:
+
+```php
+$result = Generate::text('Explain this code.')
+    ->model(Ollama::model('llama3.2'))
+    ->providerOptions('ollama', ['api' => 'responses'])
+    ->run();
+```
+
+Valid values are `chat_completions` and `responses`. The Chat Completions endpoint supports vision, reasoning effort, and structured output. The Responses endpoint supports streaming and tool calling, but does not expose reasoning or structured-output controls.
+
+## Vision (image input)
+
+Image input is supported on the Chat Completions endpoint only. Pass a `Message` with mixed content using `Content::text()` and `Content::image()`:
+
+```php
+use AiSdk\Content;
+use AiSdk\Message;
+
+$result = Generate::text()
+    ->model(Ollama::model('llava'))
+    ->messages([Message::user([
+        Content::text('Describe this image'),
+        Content::image('https://example.com/photo.png'),
+    ])])
+    ->run();
+```
+
+## Reasoning effort
+
+Reasoning effort is supported on the Chat Completions endpoint only. Pass a `Reasoning` instance to the `reasoning()` method:
+
+```php
+use AiSdk\Reasoning;
+
+$result = Generate::text('Solve this problem step by step.')
+    ->model(Ollama::model('qwq'))
+    ->reasoning(Reasoning::effort('low'))
+    ->run();
+```
+
+<Warning>
+  The `minimal` effort level is not supported by Ollama. Valid values are `low`, `medium`, and `high`. Passing `minimal` throws an `InvalidArgumentException`.
+</Warning>
+
+<Warning>
+  Reasoning is not supported on the Responses API. Using `reasoning()` together with `providerOptions('ollama', ['api' => 'responses'])` throws an `InvalidArgumentException` at runtime.
+</Warning>
+
+## Structured output
+
+Structured output is supported on the Chat Completions endpoint only. It works by passing a JSON schema through the `response_format` field.
+
+<Warning>
+  Structured output is not available on the Responses API. Using a structured output configuration with the Responses endpoint throws an `InvalidArgumentException` at runtime.
+</Warning>
+
+## Adapter capabilities
+
+<Note>
+  The adapter declares a fixed set of `ADAPTER_CAPABILITIES` in `OllamaTextModel`: `TextGeneration`, `Streaming`, `ToolCalling`, `StructuredOutput`, `Reasoning`, `TextInput`, and `ImageInput`. These reflect what the adapter code supports, not what any particular model supports. The installed model on your Ollama server is still the authority on which features actually work at inference time.
+</Note>

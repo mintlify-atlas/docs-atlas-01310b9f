@@ -1,0 +1,67 @@
+---
+title: "Generate Embeddings with Ollama's Native PHP API"
+sidebarTitle: "Embeddings"
+description: "Create single or batch text embeddings using Ollama's native /api/embed endpoint, with optional dimension control and provider-specific options like truncate and keep_alive."
+---
+
+Ollama embeddings use the native `/api/embed` endpoint rather than the OpenAI-compatible one. This means the request and response format follow Ollama's own schema, and batching multiple inputs in a single call is supported natively — Ollama returns one embedding vector per input in the same response.
+
+<Note>
+  The embedding adapter calls the native `/api/embed` path, which is derived from `nativeBaseUrl` (not `baseUrl`). By default `nativeBaseUrl` is `http://localhost:11434`. See the [configuration options](/configuration/options) page for how to change it.
+</Note>
+
+## Basic single embedding
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+$result = Generate::embedding('Search query')
+    ->model(Ollama::model('nomic-embed-text'))
+    ->run();
+
+$vector = $result->output->vector;
+```
+
+## Batch embeddings
+
+Pass an array of strings to embed multiple inputs in one request. The response contains one `EmbeddingData` entry for each input, in the same order:
+
+```php
+$result = Generate::embedding(['Search query', 'Document text'])
+    ->model(Ollama::model('nomic-embed-text'))
+    ->dimensions(256)
+    ->providerOptions('ollama', [
+        'truncate' => false,
+        'keep_alive' => '10m',
+    ])
+    ->run();
+
+$queryVector = $result->embeddings[0]->vector;
+$documentVector = $result->embeddings[1]->vector;
+```
+
+## Provider options
+
+The following provider-specific options can be passed through `providerOptions('ollama', [...])`:
+
+| Option | Type | Description |
+|---|---|---|
+| `truncate` | `bool` | Passed unchanged to Ollama. When `false`, inputs longer than the model context window are not silently truncated — Ollama returns an error instead. |
+| `keep_alive` | `string` | A duration string (e.g. `'10m'`, `'1h'`) controlling how long Ollama keeps the model loaded in memory after the request completes. |
+| `dimensions` | `int` | Requested output dimensions. You can also set this via the standard `->dimensions()` fluent method. The installed model is the authority on which dimensions are actually supported. |
+
+## Response fields
+
+The returned `EmbeddingResponse` exposes the following fields:
+
+- **`$result->embeddings`** — An array of `EmbeddingData` objects, one per input. Each has a `.vector` property containing a `float[]` of embedding values.
+- **`$result->output->vector`** — Shorthand for `$result->embeddings[0]->vector`, the vector for the first (or only) input.
+- **`$result->usage->inputTokens`** — The number of prompt tokens evaluated, taken from Ollama's `prompt_eval_count` field.
+- **`$result->providerMetadata['ollama']`** — Provider-specific metadata returned by Ollama:
+  - `total_duration` — Total request duration in nanoseconds.
+  - `load_duration` — Time spent loading the model into memory, in nanoseconds.
+
+<Warning>
+  Ollama must return exactly as many embedding vectors as there were input strings. If the count does not match, the adapter throws an `InvalidResponseException`. This can happen if Ollama silently drops inputs or returns a malformed response.
+</Warning>

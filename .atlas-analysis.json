@@ -1,0 +1,103 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Ollama Provider for PHP AI SDK",
+  "projectDescription": "Official framework-agnostic Ollama provider for the PHP AI SDK, supporting text generation, streaming, embeddings, and experimental image generation via Ollama's OpenAI-compatible and native APIs.",
+  "theme": "luma",
+  "primaryColor": "#6ba8dc",
+  "lightColor": "#0f1017",
+  "darkColor": "#d4d4d6",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/text-generation",
+              "guides/streaming",
+              "guides/embeddings",
+              "guides/image-generation",
+              "guides/model-discovery"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/options",
+              "configuration/api-endpoints",
+              "configuration/authentication"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Facade",
+            "pages": [
+              "api-reference/ollama-facade",
+              "api-reference/ollama-provider"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api-reference/text-model",
+              "api-reference/embedding-model",
+              "api-reference/image-model"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api-reference/ollama-options",
+              "api-reference/ollama-api-enum"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Text generation via Ollama's OpenAI-compatible Chat Completions and Responses endpoints",
+    "Server-sent event streaming for real-time text generation",
+    "Native embeddings via Ollama's /api/embed endpoint with batch support",
+    "Experimental image generation via Ollama's OpenAI-compatible /images/generations endpoint",
+    "Dynamic model discovery and capability inspection via /api/tags and /api/show",
+    "Optional bearer token authentication for protected Ollama servers",
+    "Per-request API endpoint override (chat_completions vs responses)",
+    "Support for vision, tool calling, reasoning effort, and structured output (Chat Completions)",
+    "Framework-agnostic — integrates with any PSR-18 HTTP client"
+  ],
+  "publicApiSurface": [
+    "Ollama::create(array $config): OllamaProvider",
+    "Ollama::model(string $modelId): Model",
+    "Ollama::availableModels(): array<ModelDefinition>",
+    "Ollama::inspectModel(string $modelId): ModelDefinition",
+    "Ollama::default(): OllamaProvider",
+    "Ollama::reset(): void",
+    "OllamaProvider::textModel(string $modelId): OllamaTextModel",
+    "OllamaProvider::embeddingModel(string $modelId): OllamaEmbeddingModel",
+    "OllamaProvider::imageModel(string $modelId): OllamaImageModel",
+    "OllamaProvider::availableModels(): array<ModelDefinition>",
+    "OllamaProvider::inspectModel(string $modelId): ModelDefinition",
+    "OllamaOptions::fromArray(array $config): OllamaOptions",
+    "OllamaOptions::authHeaders(): array<string, string>",
+    "OllamaApi::ChatCompletions",
+    "OllamaApi::Responses",
+    "OllamaApi::resolve(mixed $value): OllamaApi",
+    "Generate::text(string $prompt = null): TextGenerationBuilder",
+    "Generate::embedding(array|string $inputs): EmbeddingBuilder",
+    "Generate::image(string $prompt): ImageGenerationBuilder"
+  ]
+}

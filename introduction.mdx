@@ -1,0 +1,124 @@
+---
+title: "Ollama Provider for PHP AI SDK: Run Local LLMs in PHP"
+sidebarTitle: "Introduction"
+description: "The aisdk/ollama package brings Ollama's local model runtime into the PHP AI SDK. Supports text, streaming, embeddings, and experimental image generation."
+---
+
+`aisdk/ollama` is the official Ollama provider for the PHP AI SDK. It connects your PHP application to an Ollama server — local or remote — and exposes text generation, streaming, native embeddings, and Ollama's experimental OpenAI-compatible image generation endpoint. Because it is built on `aisdk/core`, it is entirely framework-agnostic: it works in plain PHP scripts, Laravel, Symfony, or any other context without additional adapters. No API key is required when running Ollama locally, making it the fastest way to get a fully offline LLM pipeline into a PHP project. The provider supports both the Chat Completions endpoint (the default) and the Responses endpoint, giving you flexibility as Ollama's API surface evolves.
+
+## Project Structure
+
+The package is distributed via Composer as `aisdk/ollama` and targets **PHP ^8.3**. It depends on two other SDK packages:
+
+| Dependency | Role |
+|---|---|
+| `aisdk/core` | Shared contracts, `Generate` entry point, model definitions |
+| `aisdk/openai-compatible` | OpenAI-compatible HTTP layer reused for Chat Completions and Responses |
+
+Install with:
+
+```bash
+composer require aisdk/ollama
+```
+
+## Feature Overview
+
+<CardGroup cols={2}>
+  <Card title="Text Generation" icon="message-lines" href="/guides/text-generation">
+    Generate text from any installed Ollama model using `Generate::text()`. Supports prompts, system messages, structured output, tool calling, and vision inputs.
+  </Card>
+  <Card title="Streaming" icon="signal-stream" href="/guides/streaming">
+    Stream tokens in real time with `->stream()->chunks()`. Works with Chat Completions and the Responses endpoint for interactive output.
+  </Card>
+  <Card title="Embeddings" icon="vector-square" href="/guides/embeddings">
+    Produce single or batched embeddings using Ollama's native `/api/embed` endpoint. Pass `truncate`, `keep_alive`, and custom dimensions via provider options.
+  </Card>
+  <Card title="Image Generation" icon="image" href="/guides/image-generation">
+    Generate images via Ollama's experimental OpenAI-compatible image endpoint using `Generate::image()`. Experimental — model support varies.
+  </Card>
+  <Card title="Model Discovery" icon="magnifying-glass" href="/guides/model-discovery">
+    List all models installed on the server with `Ollama::availableModels()`, or inspect capabilities — vision, tools, embeddings, reasoning — with `Ollama::inspectModel()`.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration/options">
+    Customise base URLs, API key, default API surface, and per-request headers. Supports environment variables and programmatic configuration.
+  </Card>
+</CardGroup>
+
+## The `Ollama` Facade
+
+The public entry point for every interaction is the `Ollama` class in the `AiSdk\` namespace, located at `src/Root/Ollama.php`. It is a static facade over `OllamaProvider` and covers four operations:
+
+### `Ollama::create(array $config = [])`
+
+Instantiates a new `OllamaProvider` with the given configuration and registers it as the default provider for the current process. Call this once at bootstrap time when you need non-default settings:
+
+```php
+use AiSdk\Ollama;
+
+Ollama::create([
+    'baseUrl'       => 'http://localhost:11434/v1',
+    'nativeBaseUrl' => 'http://localhost:11434',
+    'api'           => 'chat_completions',
+]);
+```
+
+If `create()` is never called, the facade lazily initialises a provider using environment variables and built-in defaults the first time any other method is invoked.
+
+### `Ollama::model(string $modelId)`
+
+Returns an `AiSdk\Contracts\Model` reference for the given model ID. Pass the result directly to `Generate::text()`, `Generate::embedding()`, or `Generate::image()`. The model ID is any name installed on the configured Ollama server — the package does not maintain a model inventory.
+
+```php
+$model = Ollama::model('llama3.2');
+```
+
+### `Ollama::availableModels()`
+
+Calls Ollama's native `/api/tags` endpoint and returns an array of `ModelDefinition` objects, each carrying the model's `id` and server-reported metadata such as `modified_at`, `size`, and `details`.
+
+```php
+$models = Ollama::availableModels();
+
+foreach ($models as $model) {
+    echo $model->id . PHP_EOL;
+}
+```
+
+### `Ollama::inspectModel(string $modelId)`
+
+Calls Ollama's `/api/show` endpoint for a specific model and returns a `ModelDefinition` populated with the capabilities reported by the server — such as `image_input` (vision), `tools`, `embedding`, and `thinking` (reasoning). This is informational only; it does not change adapter behaviour, and ordinary generation calls do not trigger hidden discovery requests.
+
+```php
+$definition = Ollama::inspectModel('llama3.2');
+
+if (in_array('image_input', $definition->capabilityNames(), true)) {
+    // The installed model advertises vision support.
+}
+```
+
+## Two API Surfaces
+
+### Chat Completions (Default)
+
+The default API surface is Ollama's OpenAI-compatible **Chat Completions** endpoint (`/v1/chat/completions`). It provides the broadest feature coverage: vision inputs, function tools, reasoning effort controls, and structured output via JSON schema passed through the response format field.
+
+### Responses
+
+Ollama also exposes a **Responses** endpoint, mirroring the OpenAI Responses API. Select it globally or per request:
+
+```php
+// Global — affects all subsequent calls
+Ollama::create(['api' => 'responses']);
+
+// Per-request override
+$result = Generate::text('Summarise this document.')
+    ->model(Ollama::model('llama3.2'))
+    ->providerOptions('ollama', ['api' => 'responses'])
+    ->run();
+```
+
+The Responses endpoint supports streaming and function tools. It does not currently expose reasoning or structured-output controls in Ollama's documented request fields. Supported values for the `api` option are `chat_completions` and `responses`.
+
+<Note>
+  No API key is required when running Ollama locally. `OLLAMA_API_KEY` and the `apiKey` config option exist only if your Ollama server is protected by a bearer token — for example, when hosted remotely or behind an authenticating proxy.
+</Note>

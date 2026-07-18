@@ -1,0 +1,58 @@
+---
+title: "Generate Images with Ollama's Experimental PHP Endpoint"
+sidebarTitle: "Image Generation"
+description: "Use Ollama's experimental OpenAI-compatible /images/generations endpoint from PHP to generate images with any installed image model."
+---
+
+Ollama exposes an experimental OpenAI-compatible `/images/generations` endpoint. The `aisdk/ollama` provider supports this endpoint through the standard `Generate::image()` interface, allowing you to generate images with any image model installed on your Ollama server.
+
+<Warning>
+  Image generation is experimental in Ollama. Availability and behavior depend entirely on the installed model and the version of Ollama running on your server. Use this feature with the expectation that it may change.
+</Warning>
+
+## Basic image generation
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+$image = Generate::image('A small robot')
+    ->model(Ollama::model('your-image-model'))
+    ->size('1024x1024')
+    ->run();
+
+$bytes = $image->output->bytes();
+```
+
+## Fields sent to Ollama
+
+The adapter deliberately restricts the request body to only the fields Ollama's experimental endpoint documents. Regardless of what you pass to the fluent builder, only these four fields are forwarded:
+
+| Field | Description |
+|---|---|
+| `model` | The model ID passed to `Ollama::model()`. |
+| `prompt` | The text prompt passed to `Generate::image()`. |
+| `size` | The requested image dimensions (e.g. `'1024x1024'`). |
+| `response_format` | Always set to `b64_json` by the adapter. |
+
+All other fields — including `n` (count), `seed`, `quality`, `style`, `user`, and any raw provider options — are silently dropped before the request is sent.
+
+<Note>
+  Provider options and raw overrides are not forwarded for image requests. Only the four documented fields above are included in the request body.
+</Note>
+
+## Default size
+
+If you do not call `->size()`, the adapter defaults to `'1024x1024'`. Ollama requires a `size` field to be present, so the adapter always ensures it is set:
+
+```php
+// size defaults to '1024x1024' — both calls are equivalent
+Generate::image('A small robot')->model(Ollama::model('your-image-model'))->run();
+Generate::image('A small robot')->model(Ollama::model('your-image-model'))->size('1024x1024')->run();
+```
+
+## Speech generation
+
+<Note>
+  Ollama does not expose an OpenAI-compatible speech endpoint, so `Generate::speech()` is intentionally not implemented in this provider. Attempting to use a speech model through the Ollama adapter is not supported.
+</Note>

@@ -1,0 +1,210 @@
+---
+title: "OllamaTextModel: Text and Vision Generation Reference"
+sidebarTitle: "OllamaTextModel"
+description: "OllamaTextModel handles text generation and streaming for any Ollama-installed model via Chat Completions or the Responses API, with vision, tools, reasoning, and structured output."
+---
+
+`OllamaTextModel` is the internal model class created by `OllamaProvider` when a text generation request is made. It implements `TextModelInterface` and handles both non-streaming and streaming generation, routing requests through either Ollama's OpenAI-compatible Chat Completions endpoint or the Responses API depending on configuration.
+
+## Namespace
+
+```php
+use AiSdk\Ollama\Models\OllamaTextModel;
+```
+
+<Note>
+  This class is not instantiated directly. Use `Ollama::model()` to obtain a model instance and the `Generate` facade to dispatch requests.
+</Note>
+
+## Adapter Capabilities
+
+The following capabilities are declared by `OllamaTextModel` via its `ADAPTER_CAPABILITIES` constant. These capabilities reflect what the adapter supports at the protocol level and are always declared regardless of which specific model is installed on the Ollama server:
+
+| Capability        | Description                                                   |
+| ----------------- | ------------------------------------------------------------- |
+| `TextGeneration`  | Generates text completions from prompts and message history   |
+| `Streaming`       | Supports server-sent event streaming via `stream()`           |
+| `ToolCalling`     | Forwards tool/function definitions and parses tool calls      |
+| `StructuredOutput`| Enforces structured JSON output via the Chat Completions API  |
+| `Reasoning`       | Passes reasoning effort controls to thinking-capable models   |
+| `TextInput`       | Accepts plain text as input                                   |
+| `ImageInput`      | Accepts image URLs or base64 data as vision input             |
+
+## Methods
+
+### `generate(TextModelRequest $request): TextModelResponse`
+
+Sends a synchronous generation request and returns the full response once complete.
+
+Internally, `generate()`:
+
+1. Resolves which API to use (Chat Completions or Responses) via `resolveApi()` — see [API Resolution](#api-resolution) below.
+2. Validates the request/API combination via `ensureApiRequestSupported()` — see [Validation](#validation-constraints) below.
+3. Builds the request body using `ChatRequestBuilder::build()` or `ResponsesRequestBuilder::build()` depending on the resolved API.
+4. Strips the internal `api` key from the built body before sending.
+5. POSTs to the appropriate URL and parses the response using `ChatResponseParser` or `ResponsesResponseParser`.
+
+```php
+$result = Generate::text('Explain black holes in one sentence.')
+    ->model(Ollama::model('llama3.2'))
+    ->run();
+
+echo $result->text;
+```
+
+### `stream(TextModelRequest $request): Generator`
+
+Sends a streaming request and returns a `Generator` that yields string chunks as they arrive from the server. Chunks are parsed from server-sent events using `ChatStreamParser` or `ResponsesStreamParser`, depending on the resolved API.
+
+```php
+$stream = Generate::text('Write a short poem about the sea.')
+    ->model(Ollama::model('llama3.2'))
+    ->stream();
+
+foreach ($stream as $chunk) {
+    echo $chunk;
+}
+```
+
+### `provider(): string`
+
+Returns the provider identifier string `'ollama'`.
+
+### `modelId(): string`
+
+Returns the model ID string that was passed at construction — for example `'llama3.2'` or `'acme/private-model:latest'`.
+
+## API Resolution
+
+Each request is routed to one of two Ollama API backends. The API is resolved in the following order:
+
+1. **Per-request override** — if `$request->providerOptionsFor('ollama')['api']` is set, that value is used.
+2. **Global default** — falls back to `$this->options->api` (configured at provider creation time via `Ollama::create(['api' => ...])`).
+3. The raw string value is normalised to an `OllamaApi` enum case via `OllamaApi::resolve()`.
+
+```php
+// Set globally at provider creation
+Ollama::create(['api' => 'responses']);
+
+// Or override on a per-request basis
+Generate::text('Hi')
+    ->model(Ollama::model('llama3.2'))
+    ->providerOptions('ollama', ['api' => 'responses'])
+    ->run();
+```
+
+## URL Routing
+
+The request URL is assembled from the configured `baseUrl` (default: `http://localhost:11434/v1`):
+
+| API               | Endpoint                       |
+| ----------------- | ------------------------------ |
+| Chat Completions  | `{baseUrl}/chat/completions`   |
+| Responses         | `{baseUrl}/responses`          |
+
+## Validation Constraints
+
+Before every request `ensureApiRequestSupported()` enforces the following rules. Violations throw `InvalidArgumentException`:
+
+<ParamField body="Responses API + reasoning" type="InvalidArgumentException">
+  Thrown when the resolved API is `Responses` and `$request->reasoning` is not `null`.
+
+  ```
+  Ollama Responses does not expose reasoning controls. Use chat_completions or let the selected thinking model reason automatically.
+  ```
+
+  Use the Chat Completions API (the default) if you need to pass reasoning effort controls explicitly.
+</ParamField>
+
+<ParamField body="Responses API + structured output" type="InvalidArgumentException">
+  Thrown when the resolved API is `Responses` and `$request->output` is not `null`.
+
+  ```
+  Ollama Responses does not expose structured-output controls. Use chat_completions for portable structured output.
+  ```
+</ParamField>
+
+<ParamField body="reasoning effort = minimal" type="InvalidArgumentException">
+  Thrown when `$request->reasoning->effort === 'minimal'`, regardless of API.
+
+  ```
+  Ollama Chat Completions reasoning effort must be low, medium, or high.
+  ```
+
+  Ollama's thinking models accept `low`, `medium`, or `high` reasoning effort only.
+</ParamField>
+
+## Usage Examples
+
+### Basic text generation
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+Ollama::create();
+
+$result = Generate::text('What is the capital of France?')
+    ->model(Ollama::model('llama3.2'))
+    ->run();
+
+echo $result->text;
+// → Paris
+```
+
+### Streaming
+
+```php
+Ollama::create();
+
+$stream = Generate::text('Count from one to five.')
+    ->model(Ollama::model('llama3.2'))
+    ->stream();
+
+foreach ($stream as $chunk) {
+    echo $chunk;
+}
+```
+
+### Vision input
+
+```php
+Ollama::create();
+
+$result = Generate::text()
+    ->model(Ollama::model('llava'))
+    ->messages([
+        AiSdk\Message::user([
+            AiSdk\Content::text('What is in this image?'),
+            AiSdk\Content::image('https://example.com/photo.jpg'),
+        ]),
+    ])
+    ->run();
+
+echo $result->text;
+```
+
+### Reasoning with thinking models
+
+```php
+Ollama::create();
+
+$result = Generate::text('Solve: if x + 3 = 10, what is x?')
+    ->model(Ollama::model('deepseek-r1:8b'))
+    ->reasoning(AiSdk\Reasoning::effort('low'))
+    ->run();
+
+echo $result->text;
+```
+
+### Switching to the Responses API globally
+
+```php
+Ollama::create(['api' => 'responses']);
+
+$result = Generate::text('Summarise the water cycle.')
+    ->model(Ollama::model('llama3.2'))
+    ->run();
+
+echo $result->text;
+```

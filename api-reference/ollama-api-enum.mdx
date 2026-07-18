@@ -1,0 +1,93 @@
+---
+title: "OllamaApi Enum: Chat Completions vs Responses API"
+sidebarTitle: "OllamaApi"
+description: "OllamaApi is a backed string enum that selects the Ollama API surface for text generation requests. Use chat_completions (default) or responses."
+---
+
+`OllamaApi` is a PHP backed string enum used to select which Ollama API surface handles text generation requests. It is stored on [`OllamaOptions`](/api-reference/ollama-options) and can be supplied as a string or enum case anywhere the SDK accepts an `api` configuration key.
+
+## Namespace
+
+```php
+use AiSdk\Ollama\OllamaApi;
+```
+
+## Cases
+
+<ParamField path="OllamaApi::ChatCompletions" type="string" default="'chat_completions'">
+  **Default.** Routes generation requests to the `/chat/completions` endpoint on the OpenAI-compatible API. Supports the full feature set: streaming, tool calls, vision inputs, reasoning effort control, and structured output constraints.
+</ParamField>
+
+<ParamField path="OllamaApi::Responses" type="string" default="'responses'">
+  Routes generation requests to the `/responses` endpoint. Supports streaming and tool calls. Does **not** support reasoning effort controls or structured output constraints.
+</ParamField>
+
+### Feature matrix
+
+| Feature | `ChatCompletions` | `Responses` |
+|---|:---:|:---:|
+| Streaming | ✅ | ✅ |
+| Tool calls | ✅ | ✅ |
+| Vision inputs | ✅ | — |
+| Reasoning effort | ✅ | — |
+| Structured output | ✅ | — |
+
+## Static Method
+
+### `OllamaApi::resolve()`
+
+```php
+public static function resolve(mixed $value): self
+```
+
+Resolves an arbitrary value to an `OllamaApi` case. Used internally by `OllamaOptions::fromArray()` to normalise the `api` config key, but can also be called directly.
+
+**Resolution behaviour:**
+
+- **`OllamaApi` instance** — returned as-is, no conversion performed.
+- **`null` or empty string** — returns `OllamaApi::ChatCompletions` (the default).
+- **Non-empty string** — lowercased and trimmed, then matched case-insensitively against each case's `.value`. Matching is exact after normalisation.
+- **Any other type, or an unrecognised string** — throws `AiSdk\Exceptions\InvalidArgumentException` with the message `'Invalid Ollama API surface. Expected chat_completions or responses.'`
+
+```php
+$api = OllamaApi::resolve('responses');    // OllamaApi::Responses
+$api = OllamaApi::resolve(null);           // OllamaApi::ChatCompletions
+$api = OllamaApi::resolve('invalid');      // throws InvalidArgumentException
+```
+
+## Usage in Configuration
+
+Pass a string or enum case as the `api` key when constructing the provider:
+
+```php
+use AiSdk\Ollama;
+use AiSdk\Ollama\OllamaApi;
+
+// Via string
+Ollama::create(['api' => 'responses']);
+
+// Via enum case
+Ollama::create(['api' => OllamaApi::Responses]);
+```
+
+Both forms are equivalent. The string is resolved by `OllamaApi::resolve()` inside `OllamaOptions::fromArray()`.
+
+## Usage in Per-Request Override
+
+The `api` surface can also be switched on a per-request basis using `providerOptions()`, without changing the provider-level default:
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+Generate::text('Summarize this.')
+    ->model(Ollama::model('llama3.2'))
+    ->providerOptions('ollama', ['api' => 'responses'])
+    ->run();
+```
+
+This is useful when most requests use `ChatCompletions` but specific calls benefit from the `Responses` endpoint, or vice versa.
+
+<Note>
+  See [API Endpoints](/configuration/api-endpoints) for a full comparison of which features are available on each API surface, including how provider options are merged at the request level.
+</Note>

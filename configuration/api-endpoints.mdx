@@ -1,0 +1,86 @@
+---
+title: "Ollama API Endpoint Selection: Chat Completions vs Responses"
+sidebarTitle: "API Endpoints"
+description: "Switch between Ollama's Chat Completions and Responses API surfaces globally or per request, and understand which features are available on each endpoint."
+---
+
+The Ollama provider exposes two API surfaces: **Chat Completions** (`/chat/completions`) and **Responses** (`/responses`). Both surfaces are OpenAI-compatible and support streaming and tool calling. Chat Completions is the default because it has broader documented support for Ollama-specific features — vision input, reasoning effort controls, and structured output. The Responses surface is available when you need it, but certain features that rely on Chat Completions request fields are intentionally blocked and will throw at request time.
+
+## Endpoint comparison
+
+| Feature | Chat Completions | Responses |
+|---|---|---|
+| Default | ✓ | — |
+| Streaming | ✓ | ✓ |
+| Tool calling | ✓ | ✓ |
+| Vision (image input) | ✓ | — (not documented) |
+| Reasoning effort | ✓ (`low`, `medium`, `high`) | ✗ (throws) |
+| Structured output | ✓ | ✗ (throws) |
+| URL path | `/chat/completions` | `/responses` |
+
+## Global selection
+
+Set the default API surface for every request made through the provider:
+
+```php
+use AiSdk\Ollama;
+
+Ollama::create(['api' => 'responses']);
+```
+
+There is no environment variable for this option — it must be set programmatically via `Ollama::create()`.
+
+## Per-request override
+
+Override the global default for a single request using `providerOptions()`. This does not affect other requests in the same process.
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+$result = Generate::text('Summarize this.')
+    ->model(Ollama::model('llama3.2'))
+    ->providerOptions('ollama', ['api' => 'responses'])
+    ->run();
+```
+
+<Note>
+  Per-request `providerOptions` take precedence over the global `api` option set in `Ollama::create()`. The request-level value is resolved by `OllamaApi::resolve()` each time, so the same validation rules apply.
+</Note>
+
+## OllamaApi enum
+
+Internally, the provider maps string values to the `OllamaApi` enum via `OllamaApi::resolve()`. The two valid string values are:
+
+- `chat_completions` — maps to `OllamaApi::ChatCompletions`
+- `responses` — maps to `OllamaApi::Responses`
+
+Resolution is case-insensitive and trims surrounding whitespace. Passing any other value — whether globally in `Ollama::create()` or as a per-request provider option — throws an `InvalidArgumentException`:
+
+```
+Invalid Ollama API surface. Expected chat_completions or responses.
+```
+
+## Restrictions on the Responses surface
+
+<Warning>
+  The Responses API does not support reasoning controls. Passing `.reasoning()` on a request routed to `responses` throws:
+
+  ```
+  InvalidArgumentException: Ollama Responses does not expose reasoning controls.
+  Use chat_completions or let the selected thinking model reason automatically.
+  ```
+
+  Switch to `chat_completions` to use reasoning effort, or omit `.reasoning()` entirely and let the installed thinking model reason on its own.
+</Warning>
+
+<Warning>
+  The Responses API does not support structured output controls. Passing `.output()` on a request routed to `responses` throws:
+
+  ```
+  InvalidArgumentException: Ollama Responses does not expose structured-output controls.
+  Use chat_completions for portable structured output.
+  ```
+
+  Switch to `chat_completions` to use schema-constrained structured output.
+</Warning>

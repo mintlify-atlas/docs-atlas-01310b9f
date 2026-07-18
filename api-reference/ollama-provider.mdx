@@ -1,0 +1,169 @@
+---
+title: "OllamaProvider: Core Provider Class for the PHP AI SDK"
+sidebarTitle: "OllamaProvider"
+description: "OllamaProvider implements text, embedding, and image model creation alongside model discovery and inspection for the PHP AI SDK's Ollama integration."
+---
+
+`OllamaProvider` is the concrete provider class created by `Ollama::create()`. It extends `AiSdk\Contracts\BaseProvider` and implements multiple provider interfaces from `aisdk/core`, covering text generation, embeddings, image generation, model listing, and model inspection. Most applications interact with `OllamaProvider` indirectly through the [`Ollama` facade](/api-reference/ollama-facade) — direct instantiation is an advanced pattern for cases where multiple provider instances with different configurations must coexist in the same process.
+
+## Namespace
+
+```php
+use AiSdk\Ollama\OllamaProvider;
+```
+
+---
+
+## Implemented Interfaces
+
+`OllamaProvider` implements the following contracts from `aisdk/core`:
+
+| Interface | Description |
+|-----------|-------------|
+| `TextProviderInterface` | Enables text generation. The protected `textModel()` method returns an `OllamaTextModel` instance, which is resolved automatically by `BaseProvider` when `$provider->model($id)` is called with a text context. |
+| `EmbeddingProviderInterface` | Enables embedding generation. The protected `embeddingModel()` method returns an `OllamaEmbeddingModel` instance. |
+| `ImageProviderInterface` | Enables image generation. The protected `imageModel()` method returns an `OllamaImageModel` instance. |
+| `AvailableModelsProviderInterface` | Exposes the `availableModels()` method, which fetches the list of locally installed models from the Ollama server's `/api/tags` endpoint. |
+| `ModelInspectionProviderInterface` | Exposes the `inspectModel()` method, which fetches detailed capabilities and metadata for a specific model from `/api/show`. |
+
+---
+
+## Constructor
+
+```php
+public function __construct(public readonly OllamaOptions $options) {}
+```
+
+Takes a fully configured `OllamaOptions` instance. The `options` property is publicly accessible (read-only) after construction, allowing inspection of the active configuration. The recommended way to build an `OllamaOptions` instance is via its named static factory:
+
+```php
+$options = OllamaOptions::fromArray($config);
+```
+
+<ParamField body="options" type="OllamaOptions" required>
+  A configured `OllamaOptions` value object. Carries the `baseUrl`, `nativeBaseUrl`, `apiKey`, `api`, `headers`, and optional `sdk` instance. Build with `OllamaOptions::fromArray()`.
+</ParamField>
+
+---
+
+## Methods
+
+### `name()`
+
+```php
+public function name(): string
+```
+
+Returns the provider's canonical name string, used internally by the SDK to identify the provider in error messages and telemetry.
+
+<ResponseField name="return" type="string">
+  Always returns `'ollama'` (the value of `OllamaOptions::PROVIDER_NAME`).
+</ResponseField>
+
+---
+
+### `availableModels()`
+
+```php
+public function availableModels(): array
+```
+
+Issues a `GET` request to `{nativeBaseUrl}/api/tags` and parses the response into an array of `ModelDefinition` objects. Each model entry in the Ollama response is mapped to a `ModelDefinition` using the `model` field (falling back to `name`) as the `id`, and preserving `modified_at`, `size`, `digest`, and `details` in the metadata.
+
+Models with missing or empty `id` fields are silently skipped.
+
+<ResponseField name="return" type="array<int, ModelDefinition>">
+  An array of `AiSdk\ModelDefinition` objects, one per installed model. Each object exposes:
+
+  | Property | Type | Description |
+  |----------|------|-------------|
+  | `id` | `string` | The model identifier as reported by the Ollama server (e.g. `'llama3.2:latest'`, `'private/model:latest'`). |
+  | `metadata` | `array` | A filtered associative array. Present keys: `modified_at` (string), `size` (int), `digest` (string), `details` (array). Keys are omitted when the server does not return a value for them. |
+</ResponseField>
+
+---
+
+### `inspectModel()`
+
+```php
+public function inspectModel(string $modelId): ModelDefinition
+```
+
+Issues a `POST` request to `{nativeBaseUrl}/api/show` with body `{"model": $modelId, "verbose": false}` and returns a `ModelDefinition` with fully mapped capabilities. The Ollama-native capability strings are translated to typed `AiSdk\Capability` enum values according to this mapping:
+
+| Ollama capability | SDK `Capability` values |
+|-------------------|-------------------------|
+| `completion` | `TextGeneration`, `Streaming`, `TextInput` |
+| `vision` | `ImageInput` |
+| `audio` | `AudioInput` |
+| `tools` | `ToolCalling` |
+| `thinking` | `Reasoning` |
+| `image` / `image_generation` | `ImageGeneration` |
+| `embedding` | `Embedding` |
+
+When `completion` is present, `structured_output` is also added to `adaptedCapabilities` with strategy `'JSON schema passed through the response format'`.
+
+<ParamField body="modelId" type="string" required>
+  The model identifier to inspect (e.g. `'llava'`, `'llama3.2'`, `'private/model:latest'`).
+</ParamField>
+
+<ResponseField name="return" type="ModelDefinition">
+  An `AiSdk\ModelDefinition` object with:
+
+  | Property | Type | Description |
+  |----------|------|-------------|
+  | `id` | `string` | The queried `$modelId` value. |
+  | `capabilities` | `array<int, Capability>` | Mapped SDK `Capability` enum instances derived from the Ollama capability strings. |
+  | `adaptedCapabilities` | `array` | Contains `structured_output` info when `completion` is in the native capabilities array; empty array otherwise. |
+  | `metadata` | `array` | Contains `modified_at`, `details`, `model_info`, and `ollama_capabilities` (the original raw string array from Ollama). Keys are omitted when the server does not return values for them. |
+</ResponseField>
+
+---
+
+## Direct Instantiation
+
+For advanced use cases — such as running multiple Ollama providers pointing at different servers in the same process — you can bypass the facade and instantiate `OllamaProvider` directly:
+
+```php
+use AiSdk\Ollama\OllamaOptions;
+use AiSdk\Ollama\OllamaProvider;
+
+$options = OllamaOptions::fromArray([
+    'baseUrl' => 'http://localhost:11434/v1',
+    'apiKey'  => 'optional-token',
+]);
+
+$provider = new OllamaProvider($options);
+```
+
+You can then use the provider instance directly with generation builders:
+
+```php
+$model = $provider->model('llama3.2');
+
+$result = Generate::text('Explain recursion.')
+    ->model($model)
+    ->run();
+
+echo $result->text;
+```
+
+Or use it for model discovery without involving the facade:
+
+```php
+// List installed models
+$models = $provider->availableModels();
+foreach ($models as $definition) {
+    echo $definition->id . PHP_EOL;
+}
+
+// Inspect a specific model
+$definition = $provider->inspectModel('llava');
+echo implode(', ', $definition->capabilityNames());
+```
+
+---
+
+<Note>
+  The protected `textModel()`, `embeddingModel()`, and `imageModel()` methods are part of the `BaseProvider` contract and are called automatically by the SDK's routing logic when `$provider->model($id)` is invoked in the appropriate context. You do not call them directly. They return `OllamaTextModel`, `OllamaEmbeddingModel`, and `OllamaImageModel` instances respectively, each initialized with the same `OllamaOptions` instance held by the provider.
+</Note>

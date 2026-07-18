@@ -1,0 +1,68 @@
+---
+title: "Stream Ollama Responses in Real Time with PHP"
+sidebarTitle: "Streaming"
+description: "Stream text chunks from any Ollama model as server-sent events using Generate::text()->stream(), with support for both Chat Completions and Responses APIs."
+---
+
+Streaming lets you process model output incrementally as it is generated, rather than waiting for the full response. The Ollama provider delivers chunks as server-sent events over a streaming HTTP connection. Both the Chat Completions and Responses APIs support streaming, so you can use it regardless of which endpoint is configured.
+
+## Basic streaming
+
+Call `stream()` instead of `run()`, then iterate over `chunks()`:
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+foreach (Generate::text('Tell me a story.')
+    ->model(Ollama::model('llama3.2'))
+    ->stream()
+    ->chunks() as $chunk) {
+    echo $chunk;
+}
+```
+
+Each `$chunk` is a plain string containing the next piece of text yielded by the model.
+
+## Streaming with the Responses API
+
+Streaming works the same way when using the Responses endpoint. Switch globally and use `stream()` as usual:
+
+```php
+Ollama::create(['api' => 'responses']);
+
+foreach (Generate::text('Summarize this document.')
+    ->model(Ollama::model('llama3.2'))
+    ->stream()
+    ->chunks() as $chunk) {
+    echo $chunk;
+}
+```
+
+## How the two parsers differ
+
+Under the hood, the adapter selects a different stream parser depending on the configured API:
+
+- **Chat Completions** — uses `ChatStreamParser`, which parses the `data:` lines from Ollama's `/chat/completions` stream and yields each text delta as a string.
+- **Responses API** — uses `ResponsesStreamParser`, which parses the event stream from Ollama's `/responses` endpoint and yields each text delta as a string.
+
+Both parsers expose the same PHP `Generator` interface through `chunks()`, so your application code is identical regardless of which parser is active.
+
+<Note>
+  Streaming is one of the declared `ADAPTER_CAPABILITIES` in `OllamaTextModel`, which means it is always available from the adapter's perspective. Whether the installed model streams correctly depends on the model itself.
+</Note>
+
+<Tip>
+  When streaming inside a web request (for example, in a long-polling or SSE handler), PHP may buffer output before sending it to the browser. Call `ob_flush()` and `flush()` inside the loop body to push each chunk to the client immediately:
+
+  ```php
+  foreach (Generate::text('Tell me a story.')
+      ->model(Ollama::model('llama3.2'))
+      ->stream()
+      ->chunks() as $chunk) {
+      echo $chunk;
+      ob_flush();
+      flush();
+  }
+  ```
+</Tip>

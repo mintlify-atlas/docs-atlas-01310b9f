@@ -1,0 +1,168 @@
+---
+title: "OllamaEmbeddingModel: Native Embeddings Reference"
+sidebarTitle: "OllamaEmbeddingModel"
+description: "OllamaEmbeddingModel sends embedding requests to Ollama's native /api/embed endpoint, supporting batch inputs, dimension control, and provider-specific options."
+---
+
+`OllamaEmbeddingModel` implements `EmbeddingModelInterface` and sends requests to Ollama's native `/api/embed` endpoint — not the OpenAI-compatible path. It supports both single and batch inputs, optional dimension control, and provider-specific pass-through options such as `truncate` and `keep_alive`.
+
+## Namespace
+
+```php
+use AiSdk\Ollama\Models\OllamaEmbeddingModel;
+```
+
+<Note>
+  This class is not instantiated directly. Use `Ollama::model()` to obtain a model instance and the `Generate` facade to dispatch requests.
+</Note>
+
+## URL
+
+Requests are sent to:
+
+```
+{nativeBaseUrl}/api/embed
+```
+
+The `nativeBaseUrl` defaults to `http://localhost:11434` and is distinct from the OpenAI-compatible `baseUrl` (`http://localhost:11434/v1`) used by text and image models. It can be configured independently:
+
+```php
+Ollama::create([
+    'baseUrl'       => 'http://my-ollama-host:11434/v1',
+    'nativeBaseUrl' => 'http://my-ollama-host:11434',
+]);
+```
+
+If `nativeBaseUrl` is not set explicitly, it is derived automatically by stripping the `/v1` suffix from `baseUrl`.
+
+## Method
+
+### `generate(EmbeddingRequest $request): EmbeddingResponse`
+
+Builds a request body and POSTs it to `/api/embed`, then validates and parses the response into an `EmbeddingResponse`.
+
+#### Request body
+
+The following fields are sent to Ollama:
+
+<ParamField body="model" type="string" required>
+  The model identifier string passed at construction — for example `'nomic-embed-text'`.
+</ParamField>
+
+<ParamField body="input" type="string[]" required>
+  Array of input strings to embed, sourced from `$request->inputs`. Ollama processes all inputs in a single batch call.
+</ParamField>
+
+<ParamField body="dimensions" type="int">
+  Optional number of dimensions to truncate the output vectors to. Sourced from `$request->dimensions`. Omitted from the request body if not set.
+</ParamField>
+
+#### Provider options merging
+
+Any provider options passed via `->providerOptions('ollama', [...])` are merged into the request body using `array_replace_recursive`, allowing you to set Ollama-specific fields:
+
+| Option       | Type             | Description                                                         |
+| ------------ | ---------------- | ------------------------------------------------------------------- |
+| `truncate`   | `bool`           | Whether to truncate inputs to the model's context window. Defaults to `true` in Ollama. |
+| `keep_alive` | `string`         | Duration to keep the model loaded in memory, e.g. `'10m'` or `'1h'`. |
+
+The special `raw` key inside provider options is also merged as a final passthrough, applied after all other fields. Use it to forward any undocumented or future Ollama fields without interference from the SDK's merge logic.
+
+## Response Fields
+
+<ResponseField name="embeddings" type="EmbeddingData[]">
+  One `EmbeddingData` object per input string, in the same order as the input array.
+
+  <ResponseField name="embeddings[n].vector" type="float[]">
+    The embedding vector for the nth input. The number of dimensions matches the model's native output size, or the requested `dimensions` value if truncation was applied.
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="usage.inputTokens" type="int">
+  Total number of tokens processed across all inputs, sourced from `prompt_eval_count` in the Ollama response. Returns `0` if Ollama does not include token counts.
+</ResponseField>
+
+<ResponseField name="providerMetadata.ollama.model" type="string">
+  The model string echoed back by Ollama in the response. Falls back to the requested model ID if the field is absent.
+</ResponseField>
+
+<ResponseField name="providerMetadata.ollama.total_duration" type="int">
+  Total time taken for the request in nanoseconds, as reported by Ollama.
+</ResponseField>
+
+<ResponseField name="providerMetadata.ollama.load_duration" type="int">
+  Time spent loading the model into memory in nanoseconds. Only present when Ollama includes this field.
+</ResponseField>
+
+## Error Conditions
+
+`generate()` raises an `InvalidResponseException` in two cases:
+
+**Unexpected embedding count** — if the number of embedding vectors in the Ollama response does not match the number of input strings:
+
+```
+Ollama returned an unexpected number of embeddings.
+```
+
+This can occur if Ollama silently drops inputs or returns a malformed response.
+
+**Invalid embedding vector** — if any individual embedding vector is empty or contains non-numeric values:
+
+```
+Ollama returned an invalid embedding.
+```
+
+The exception context includes the `inputIndex` of the offending vector to aid debugging.
+
+## Usage Example
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+Ollama::create();
+
+$result = Generate::embedding(['First document', 'Second document'])
+    ->model(Ollama::model('nomic-embed-text'))
+    ->dimensions(256)
+    ->providerOptions('ollama', [
+        'truncate'   => false,
+        'keep_alive' => '10m',
+    ])
+    ->run();
+
+foreach ($result->embeddings as $embedding) {
+    echo 'Vector dimensions: ' . count($embedding->vector) . PHP_EOL;
+}
+```
+
+### Accessing provider metadata
+
+```php
+Ollama::create();
+
+$result = Generate::embedding(['Hello world'])
+    ->model(Ollama::model('nomic-embed-text'))
+    ->run();
+
+$meta = $result->providerMetadata['ollama'];
+
+echo 'Model: '          . $meta['model']          . PHP_EOL;
+echo 'Total duration: ' . $meta['total_duration'] . ' ns' . PHP_EOL;
+echo 'Load duration: '  . $meta['load_duration']  . ' ns' . PHP_EOL;
+echo 'Input tokens: '   . $result->usage->inputTokens . PHP_EOL;
+```
+
+### Using the `raw` passthrough
+
+```php
+$result = Generate::embedding(['Document text here'])
+    ->model(Ollama::model('nomic-embed-text'))
+    ->providerOptions('ollama', [
+        'keep_alive' => '5m',
+        'raw' => [
+            'some_future_ollama_field' => 'value',
+        ],
+    ])
+    ->run();
+```

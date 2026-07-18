@@ -1,0 +1,62 @@
+---
+title: "Authenticate with a Protected Ollama Server from PHP"
+sidebarTitle: "Authentication"
+description: "Pass a bearer token to a password-protected or remote Ollama server using the OLLAMA_API_KEY environment variable or apiKey configuration option."
+---
+
+A local Ollama server does not require authentication — you can start generating text immediately without any API key. Authentication is only needed when connecting to a **remote** Ollama server or one that has been explicitly configured to require a bearer token.
+
+## Environment variable
+
+The recommended approach for production deployments is to set the key as an environment variable. It is loaded automatically via `Env::loadOptionalSetting()` and requires no changes to your application code.
+
+```bash
+OLLAMA_API_KEY=your-bearer-token
+```
+
+## Programmatic configuration
+
+Pass the key directly when calling `Ollama::create()`:
+
+```php
+use AiSdk\Ollama;
+
+Ollama::create([
+    'apiKey' => 'your-bearer-token',
+]);
+```
+
+## How it works
+
+When `apiKey` is set, `OllamaOptions::authHeaders()` prepends an `Authorization: Bearer <token>` header to the headers array before every outbound request. The resulting headers are passed to all request types — text generation, embeddings, image generation, model listing (`/api/tags`), and model inspection (`/api/show`).
+
+```php
+// OllamaOptions::authHeaders() produces:
+[
+    'Authorization' => 'Bearer your-bearer-token',
+    // ...any additional headers from the 'headers' option
+]
+```
+
+This merged headers array is forwarded unchanged to the underlying HTTP runner on every call.
+
+## Custom headers
+
+For servers that require non-standard authentication schemes or additional request headers, use the `headers` option:
+
+```php
+Ollama::create([
+    'headers' => [
+        'X-Api-Key' => 'your-key',
+        'X-Tenant'  => 'my-org',
+    ],
+]);
+```
+
+<Note>
+  `apiKey` takes priority over `headers`. When both are provided, `authHeaders()` prepends the `Authorization` header from `apiKey` before the custom `headers` array using `array_merge`. If your custom `headers` array also contains an `Authorization` key, the `apiKey` value wins — it appears first and the later duplicate is discarded by PHP's `array_merge` behavior.
+</Note>
+
+<Tip>
+  For local development, omit `apiKey` entirely. The default base URL `http://localhost:11434/v1` does not require authentication, and the provider initialises without credentials when neither `apiKey` nor `OLLAMA_API_KEY` is present.
+</Tip>

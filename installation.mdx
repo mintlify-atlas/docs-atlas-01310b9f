@@ -1,0 +1,98 @@
+---
+title: "Install the Ollama Provider for PHP AI SDK"
+sidebarTitle: "Installation"
+description: "Install aisdk/ollama via Composer, confirm system requirements, and verify Ollama is running before making your first API call."
+---
+
+`aisdk/ollama` is installed like any Composer package. Before you begin, make sure your local environment satisfies the prerequisites below — specifically that an Ollama server is reachable, because every API call the SDK makes is a live HTTP request to that server.
+
+## System Requirements
+
+| Requirement | Details |
+|---|---|
+| **PHP** | ^8.3 |
+| **Composer** | Any current version |
+| **Ollama** | A running Ollama server. See [ollama.com](https://ollama.com) for installation instructions. |
+| **PSR-18 HTTP client** | Any PSR-18-compliant client: [Guzzle](https://docs.guzzlephp.org), [Symfony HTTP Client](https://symfony.com/doc/current/http_client.html), or another. The SDK uses PSR-18 discovery to find your client automatically. |
+
+## Installation
+
+<Steps>
+  <Step title="Install the package via Composer">
+    Run the following command in your project root:
+
+    ```bash
+    composer require aisdk/ollama
+    ```
+
+    This installs `aisdk/ollama` and its two dependencies — `aisdk/core` and `aisdk/openai-compatible` — into your `vendor/` directory.
+  </Step>
+
+  <Step title="Pull a model from the Ollama library">
+    Use the Ollama CLI to download a model onto your server. For example, to pull Llama 3.2:
+
+    ```bash
+    ollama pull llama3.2
+    ```
+
+    Pass the same model name string to `Ollama::model()` when constructing requests. Any model available in the [Ollama library](https://ollama.com/library) can be pulled this way.
+  </Step>
+
+  <Step title="Verify Ollama is running">
+    Start the Ollama server if it is not already running:
+
+    ```bash
+    ollama serve
+    ```
+
+    To confirm the server is reachable and inspect your installed models, call the native tags endpoint:
+
+    ```bash
+    curl http://localhost:11434/api/tags
+    ```
+
+    A successful response returns a JSON object listing every model available on the server. The SDK's `Ollama::availableModels()` method calls this same endpoint.
+  </Step>
+</Steps>
+
+## Autoloading
+
+The package registers two PSR-4 namespace mappings in its `composer.json`:
+
+| Namespace | Source directory | What lives here |
+|---|---|---|
+| `AiSdk\` | `src/Root/` | The `Ollama` static facade — the primary entry point |
+| `AiSdk\Ollama\` | `src/` | `OllamaProvider`, `OllamaOptions`, model adapters, and supporting classes |
+
+Composer's autoloader handles both namespaces automatically after `composer require`. You do not need to add any `require` or `include` statements in your code.
+
+```php
+// Both classes are available immediately after autoloading
+use AiSdk\Ollama;            // from src/Root/Ollama.php
+use AiSdk\Ollama\OllamaOptions; // from src/OllamaOptions.php
+```
+
+## Environment Variables
+
+The provider reads optional configuration from your environment. Set these in your `.env` file or shell before any SDK calls are made:
+
+| Variable | Description | Default |
+|---|---|---|
+| `OLLAMA_BASE_URL` | Base URL for the OpenAI-compatible API | `http://localhost:11434/v1` |
+| `OLLAMA_NATIVE_BASE_URL` | Base URL for native API endpoints (tags, show, embed) | Derived by stripping `/v1` from `OLLAMA_BASE_URL` |
+| `OLLAMA_API_KEY` | Optional bearer token for protected servers | — |
+
+You can also set these programmatically at bootstrap time by calling `Ollama::create()`:
+
+```php
+use AiSdk\Ollama;
+
+Ollama::create([
+    'baseUrl'       => 'http://localhost:11434/v1',
+    'nativeBaseUrl' => 'http://localhost:11434',
+]);
+```
+
+<Tip>
+  No API key is needed when connecting to a local Ollama server. `OLLAMA_API_KEY` is only required if your Ollama instance is hosted remotely or sits behind an authenticating reverse proxy that expects a bearer token.
+</Tip>

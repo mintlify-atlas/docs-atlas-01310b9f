@@ -1,0 +1,127 @@
+---
+title: "OllamaOptions: Configuration Value Object Reference"
+sidebarTitle: "OllamaOptions"
+description: "OllamaOptions is an immutable configuration DTO holding all provider settings. Build one with OllamaOptions::fromArray() and pass it to OllamaProvider directly."
+---
+
+`OllamaOptions` is the configuration value object for the Ollama provider. All properties are declared `readonly`, making every instance fully immutable after construction. You can create an instance directly via `OllamaOptions::fromArray()`, or let `Ollama::create()` build one internally from the config array you pass to it.
+
+## Namespace
+
+```php
+use AiSdk\Ollama\OllamaOptions;
+```
+
+## Constants
+
+| Constant | Value | Description |
+|---|---|---|
+| `DEFAULT_BASE_URL` | `'http://localhost:11434/v1'` | The default OpenAI-compatible API base URL used when neither the config array nor the `OLLAMA_BASE_URL` environment variable supplies a value. |
+| `PROVIDER_NAME` | `'ollama'` | The canonical provider name string used throughout the SDK to identify this provider. |
+
+## Constructor
+
+All six properties are `readonly` — they can only be set at construction time:
+
+```php
+public function __construct(
+    public readonly ?string $apiKey,
+    public readonly OllamaApi $api = OllamaApi::ChatCompletions,
+    public readonly string $baseUrl = self::DEFAULT_BASE_URL,
+    public readonly string $nativeBaseUrl = 'http://localhost:11434',
+    public readonly array $headers = [],
+    public readonly ?Sdk $sdk = null,
+) {}
+```
+
+## Properties
+
+<ParamField path="apiKey" type="?string">
+  Optional bearer token used to authenticate requests. When set, every outgoing request receives an `Authorization: Bearer {apiKey}` header. Pass `null` (or omit it) to make unauthenticated requests, which is the typical setup for a local Ollama instance.
+</ParamField>
+
+<ParamField path="api" type="OllamaApi" default="OllamaApi::ChatCompletions">
+  Selects the default API surface used for text generation requests. Accepts either `OllamaApi::ChatCompletions` (OpenAI-compatible `/chat/completions`) or `OllamaApi::Responses` (`/responses`). See [`OllamaApi`](/api-reference/ollama-api-enum) for a full feature comparison.
+</ParamField>
+
+<ParamField path="baseUrl" type="string" default="'http://localhost:11434/v1'">
+  Base URL for OpenAI-compatible endpoints such as `/chat/completions` and `/responses`. Trailing slashes are stripped automatically. Override this when Ollama is running on a non-default host or port, or when routing through a reverse proxy.
+</ParamField>
+
+<ParamField path="nativeBaseUrl" type="string" default="'http://localhost:11434'">
+  Base URL for Ollama-native endpoints: `/api/tags`, `/api/show`, and `/api/embed`. Defaults to `baseUrl` with the `/v1` suffix stripped. Override this independently when your native API is served from a different origin than the OpenAI-compatible API.
+</ParamField>
+
+<ParamField path="headers" type="array<string, string>" default="[]">
+  Additional HTTP headers merged into every outgoing request. Useful for passing custom authentication tokens, tracing headers, or any other provider-specific metadata. When `apiKey` is also set, the `Authorization` header is prepended to — not replaced by — this array.
+</ParamField>
+
+<ParamField path="sdk" type="?Sdk" default="null">
+  A custom `AiSdk\Support\Sdk` instance that wraps the underlying HTTP client and request/stream factories. When `null`, the provider falls back to `Generate::sdk()`. Supply your own instance when you need custom HTTP middleware, timeouts, or a test-doubles setup.
+</ParamField>
+
+## Static Factory Method
+
+```php
+public static function fromArray(array $config = []): self
+```
+
+The recommended way to construct an `OllamaOptions` instance. Resolves each setting from the supplied `$config` array, falling back to environment variables and then to built-in defaults, in that priority order.
+
+### Resolution rules
+
+| Property | Config key | Environment variable | Default |
+|---|---|---|---|
+| `apiKey` | `apiKey` | `OLLAMA_API_KEY` | `null` |
+| `api` | `api` | — | `OllamaApi::ChatCompletions` |
+| `baseUrl` | `baseUrl` | `OLLAMA_BASE_URL` | `DEFAULT_BASE_URL` |
+| `nativeBaseUrl` | `nativeBaseUrl` | `OLLAMA_NATIVE_BASE_URL` | `baseUrl` with `/v1` stripped |
+| `headers` | `headers` | — | `[]` |
+| `sdk` | `sdk` | — | `null` |
+
+**`apiKey`** — reads `$config['apiKey']` first; if absent or empty, checks the `OLLAMA_API_KEY` environment variable. Stored as `null` when both sources are empty.
+
+**`api`** — delegated to `OllamaApi::resolve($config['api'] ?? null)`. Accepts a string (`'chat_completions'`, `'responses'`), an `OllamaApi` enum case, or `null` (defaults to `ChatCompletions`).
+
+**`baseUrl`** — reads `$config['baseUrl']` first; if absent, checks `OLLAMA_BASE_URL`; if still absent, falls back to `DEFAULT_BASE_URL`. Trailing slashes are stripped.
+
+**`nativeBaseUrl`** — reads `$config['nativeBaseUrl']` first; if absent, checks `OLLAMA_NATIVE_BASE_URL`; if still absent, derives the value by removing the trailing `/v1` segment from the resolved `baseUrl`. Trailing slashes are stripped.
+
+**`headers`** — passed through directly from `$config['headers']` when it is an array; otherwise defaults to `[]`. No environment variable fallback.
+
+**`sdk`** — passed through from `$config['sdk']` when it is an instance of `AiSdk\Support\Sdk`; otherwise stored as `null`. No environment variable fallback.
+
+### Example
+
+```php
+$options = OllamaOptions::fromArray([
+    'baseUrl'       => 'http://localhost:11434/v1',
+    'nativeBaseUrl' => 'http://localhost:11434',
+    'apiKey'        => 'my-token',
+    'api'           => 'chat_completions',
+    'headers'       => ['X-Custom' => 'value'],
+]);
+```
+
+## Instance Method
+
+### `authHeaders()`
+
+```php
+public function authHeaders(): array<string, string>
+```
+
+Returns the complete set of authentication and custom headers to be sent with every request. When `apiKey` is non-null, `Authorization: Bearer {apiKey}` is prepended to the `headers` array using `array_merge`, ensuring it appears first. Any keys in `headers` that duplicate `Authorization` will be overridden by the prepended value.
+
+```php
+$headers = $options->authHeaders();
+// ['Authorization' => 'Bearer my-token', 'X-Custom' => 'value']
+```
+
+When `apiKey` is `null`, the method returns the `headers` array unchanged:
+
+```php
+$options  = OllamaOptions::fromArray(['headers' => ['X-Trace-Id' => 'abc123']]);
+$headers  = $options->authHeaders();
+// ['X-Trace-Id' => 'abc123']
+```

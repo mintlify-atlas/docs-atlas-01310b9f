@@ -1,0 +1,157 @@
+---
+title: "OllamaImageModel: Experimental Image Generation Reference"
+sidebarTitle: "OllamaImageModel"
+description: "OllamaImageModel sends experimental image generation requests to Ollama's OpenAI-compatible /images/generations endpoint using a strict subset of allowed fields."
+---
+
+`OllamaImageModel` implements `ImageModelInterface` and sends requests to Ollama's experimental OpenAI-compatible `/images/generations` endpoint. Because Ollama's image generation support is still evolving, the adapter deliberately restricts the outgoing request to only the fields Ollama currently accepts — all other fields are stripped before the request is sent.
+
+## Namespace
+
+```php
+use AiSdk\Ollama\Models\OllamaImageModel;
+```
+
+<Warning>
+  Image generation is **experimental** in Ollama. The available models, supported sizes, and API stability all depend on the Ollama server version you are running. Behaviour may change without notice across Ollama releases.
+</Warning>
+
+<Note>
+  `Generate::speech()` is intentionally not implemented in this provider. Ollama does not expose an OpenAI-compatible speech endpoint, so no `OllamaSpeechModel` exists.
+</Note>
+
+<Note>
+  This class is not instantiated directly. Use `Ollama::model()` to obtain a model instance and the `Generate` facade to dispatch requests.
+</Note>
+
+## URL
+
+Requests are sent to:
+
+```
+{baseUrl}/images/generations
+```
+
+The `baseUrl` defaults to `http://localhost:11434/v1`.
+
+## Method
+
+### `generate(ImageRequest $request): ImageResponse`
+
+Builds a restricted request body and POSTs it to `/images/generations`, then parses the response with `ImageResponseParser`.
+
+#### Allowed request fields
+
+`OllamaImageModel` uses `ImageRequestBuilder` to assemble a full request body, then filters it down to only the four keys Ollama accepts:
+
+<ParamField body="model" type="string" required>
+  The model identifier string — for example `'x/z-image-turbo'`.
+</ParamField>
+
+<ParamField body="prompt" type="string" required>
+  The text prompt describing the image to generate.
+</ParamField>
+
+<ParamField body="size" type="string">
+  The output image dimensions as a `'WxH'` string — for example `'1024x1024'`. If not set by the caller, the adapter defaults this to `'1024x1024'` automatically.
+</ParamField>
+
+<ParamField body="response_format" type="string">
+  Always set to `'b64_json'` by the request builder. The adapter only handles base64-encoded image responses; URLs are not requested.
+</ParamField>
+
+#### Fields that are NOT forwarded
+
+Even if you set these values in your `Generate` call, they are stripped before the request reaches Ollama:
+
+| SDK call           | Reason omitted                                          |
+| ------------------ | ------------------------------------------------------- |
+| `->count(n)`       | `n` / count is not forwarded (`includeCount: false`)    |
+| `->seed(n)`        | `seed` is not forwarded (`seedParameter: null`)         |
+| `->quality('hd')`  | Not in Ollama's allowed field list                      |
+| `->style('vivid')` | Not in Ollama's allowed field list                      |
+| Provider options   | Not merged (`includeProviderOptions: false`)            |
+
+## Response
+
+`generate()` returns an `ImageResponse` parsed by `ImageResponseParser`.
+
+<ResponseField name="output" type="ImageOutput">
+  The first generated image wrapped in an `ImageOutput` object.
+
+  <ResponseField name="output.bytes()" type="string">
+    The raw image bytes, base64-decoded from the `b64_json` field returned by Ollama. Write directly to a file or pass to an image-processing library.
+  </ResponseField>
+</ResponseField>
+
+## Error Conditions
+
+`generate()` raises an `InvalidResponseException` in the following cases:
+
+**Missing or non-array `data` field** — if `$payload['data']` is absent or is not an array, the adapter throws before delegating to the response parser:
+
+```
+Provider [ollama] returned no generated images.
+```
+
+**Empty `data` array** — if `$payload['data']` is an empty array, `ImageResponseParser` raises an `InvalidResponseException` during parsing.
+
+Both conditions can occur when targeting a model that does not support image generation, or when the Ollama server version does not yet implement the endpoint.
+
+## Usage Example
+
+```php
+use AiSdk\Generate;
+use AiSdk\Ollama;
+
+Ollama::create();
+
+$result = Generate::image('A small robot on a desk')
+    ->model(Ollama::model('your-image-model'))
+    ->size('1024x1024')
+    ->run();
+
+$bytes = $result->output->bytes();
+file_put_contents('robot.png', $bytes);
+```
+
+### Default size behaviour
+
+If you omit `->size()`, the adapter automatically sets `size` to `'1024x1024'` in the outgoing request:
+
+```php
+Ollama::create();
+
+// size defaults to '1024x1024' — no need to set it explicitly
+$result = Generate::image('A mountain at sunrise')
+    ->model(Ollama::model('your-image-model'))
+    ->run();
+
+file_put_contents('mountain.png', $result->output->bytes());
+```
+
+### Fields stripped by the adapter
+
+The following example demonstrates that `count`, `seed`, and provider options are silently ignored — only the four allowed fields reach Ollama:
+
+```php
+Ollama::create();
+
+// count(2), seed(42), and the raw provider options below are all stripped.
+// The body sent to Ollama contains only: model, prompt, size, response_format.
+$result = Generate::image('A tiny robot')
+    ->model(Ollama::model('x/z-image-turbo'))
+    ->count(2)
+    ->size('1024x1024')
+    ->seed(42)
+    ->providerOptions('ollama', [
+        'raw' => [
+            'quality' => 'high',
+            'style'   => 'vivid',
+            'user'    => 'user_123',
+        ],
+    ])
+    ->run();
+
+file_put_contents('robot.png', $result->output->bytes());
+```

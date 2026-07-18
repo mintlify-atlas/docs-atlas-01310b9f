@@ -1,0 +1,72 @@
+---
+title: "Discover and Inspect Ollama Models from PHP"
+sidebarTitle: "Model Discovery"
+description: "List models installed on your Ollama server and inspect their capabilities, metadata, and supported features using availableModels() and inspectModel()."
+---
+
+The `aisdk/ollama` package ships no model inventory. Model IDs are opaque provider values — any string your Ollama server recognises is a valid argument to `Ollama::model()`. To know which models are actually installed and what they support, query the live server using `availableModels()` and `inspectModel()`.
+
+## Listing available models
+
+`availableModels()` calls Ollama's native `/api/tags` endpoint and returns a `ModelDefinition[]` array:
+
+```php
+use AiSdk\Ollama;
+
+$models = Ollama::availableModels();
+
+foreach ($models as $model) {
+    echo $model->id . PHP_EOL;
+}
+```
+
+Each `ModelDefinition` in the array includes a `metadata` array with the following fields when present in the server response:
+
+| Field | Description |
+|---|---|
+| `modified_at` | ISO 8601 timestamp of when the model was last modified. |
+| `size` | Model file size in bytes. |
+| `digest` | Content digest (e.g. `sha256:abc123…`). |
+| `details` | Nested object with fields such as `family`, `parameter_size`, `quantization_level`, etc. |
+
+## Inspecting a model
+
+`inspectModel()` calls Ollama's `/api/show` endpoint and returns a single `ModelDefinition` populated with the capabilities the installed model advertises:
+
+```php
+$definition = Ollama::inspectModel('llava');
+
+if (in_array('image_input', $definition->capabilityNames(), true)) {
+    // Model advertises vision support
+}
+```
+
+The returned `ModelDefinition` also includes a `metadata['ollama_capabilities']` array containing the raw Ollama capability strings as returned by the server.
+
+## Capability mapping
+
+`OllamaProvider::mapCapabilities()` translates Ollama's native capability strings into PHP AI SDK `Capability` enum values:
+
+| Ollama capability | SDK Capability |
+|---|---|
+| `completion` | `TextGeneration`, `Streaming`, `TextInput` |
+| `vision` | `ImageInput` |
+| `audio` | `AudioInput` |
+| `tools` | `ToolCalling` |
+| `thinking` | `Reasoning` |
+| `image` / `image_generation` | `ImageGeneration` |
+| `embedding` | `Embedding` |
+
+## Adapted capabilities
+
+When a model reports the `completion` capability, the provider also adds a `structured_output` adapted capability entry with the strategy `JSON schema passed through the response format`. This reflects that structured output is available on Chat Completions via the `response_format` field, even though Ollama does not report it as a native capability string.
+
+## Inspection does not affect generation
+
+<Note>
+  Calling `inspectModel()` is entirely informational. It does not change how the adapter behaves during generation calls, and ordinary `Generate::text()`, `Generate::embedding()`, and `Generate::image()` calls never make hidden discovery requests to `/api/show` or `/api/tags`.
+</Note>
+
+<Tip>
+  Both `availableModels()` and `inspectModel()` use `nativeBaseUrl` (default: `http://localhost:11434`) to construct their request URLs. See the [configuration options](/configuration/options) page to learn how to customise `nativeBaseUrl` for remote or non-standard Ollama deployments.
+</Tip>

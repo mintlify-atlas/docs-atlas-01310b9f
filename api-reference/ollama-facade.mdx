@@ -1,0 +1,191 @@
+---
+title: "Ollama Facade: Static Entry Point for the PHP AI SDK"
+sidebarTitle: "Ollama Facade"
+description: "The Ollama facade provides static methods to configure the provider, create model references, list installed models, and inspect model capabilities."
+---
+
+The `Ollama` class lives in the root `AiSdk\` namespace (defined in `src/Root/Ollama.php`) and acts as a static facade over `OllamaProvider`. It manages a process-level singleton provider instance, meaning you configure the provider once at application bootstrap and all subsequent calls to `Ollama::model()`, `Ollama::availableModels()`, and `Ollama::inspectModel()` share that same instance automatically.
+
+## Namespace and Import
+
+```php
+use AiSdk\Ollama;
+```
+
+---
+
+## Methods
+
+### `Ollama::create()`
+
+```php
+public static function create(array $config = []): OllamaProvider
+```
+
+Creates a new `OllamaProvider` from the given configuration array and stores it as the process-level default. All subsequent calls to `Ollama::model()`, `Ollama::availableModels()`, and `Ollama::inspectModel()` will use this instance until `Ollama::reset()` is called.
+
+Internally, this passes the config array to `OllamaOptions::fromArray()`, which reads values from the array and falls back to environment variables (`OLLAMA_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_NATIVE_BASE_URL`) when array keys are absent.
+
+<ParamField body="config" type="array" default="[]">
+  Optional configuration array. Supported keys:
+
+  | Key | Type | Default | Description |
+  |-----|------|---------|-------------|
+  | `baseUrl` | `string` | `http://localhost:11434/v1` | The OpenAI-compatible API base URL. Also read from `OLLAMA_BASE_URL`. Trailing slashes are stripped automatically. |
+  | `nativeBaseUrl` | `string` | Derived from `baseUrl` by stripping `/v1` | The native Ollama API base URL used for `/api/tags` and `/api/show`. Also read from `OLLAMA_NATIVE_BASE_URL`. |
+  | `apiKey` | `string\|null` | `null` | Bearer token sent in the `Authorization` header. Also read from `OLLAMA_API_KEY`. Pass `null` or omit for unauthenticated local installs. |
+  | `api` | `string\|OllamaApi` | `'chat_completions'` | Which Ollama API to use. Accepts `'chat_completions'` or `'responses'`. |
+  | `headers` | `array<string, string>` | `[]` | Additional HTTP headers merged into every request. |
+  | `sdk` | `Sdk\|null` | `null` | An explicit `AiSdk\Support\Sdk` instance providing the HTTP client and PSR-17 factories. Falls back to the global `Generate::sdk()` singleton. |
+</ParamField>
+
+<ResponseField name="return" type="OllamaProvider">
+  The newly created and stored `OllamaProvider` instance.
+</ResponseField>
+
+---
+
+### `Ollama::model()`
+
+```php
+public static function model(string $modelId): Model
+```
+
+Creates a model reference for the given model ID string and returns it as an `AiSdk\Contracts\Model` instance. The model ID is treated as an opaque value — any string the Ollama server accepts is valid.
+
+<ParamField body="modelId" type="string" required>
+  The model identifier to pass through to the Ollama server. Examples: `'llama3.2'`, `'acme/private-model:latest'`, `'llava'`, `'nomic-embed-text'`.
+</ParamField>
+
+<ResponseField name="return" type="Model">
+  A model reference implementing `AiSdk\Contracts\Model`. Pass this directly to `Generate::text()->model()` or other generation builders.
+</ResponseField>
+
+---
+
+### `Ollama::availableModels()`
+
+```php
+public static function availableModels(): array
+```
+
+Calls the Ollama server's `/api/tags` endpoint and returns an array of `ModelDefinition` objects representing every model currently installed on that server. The HTTP request is issued synchronously using the configured SDK HTTP client.
+
+<ResponseField name="return" type="array<int, ModelDefinition>">
+  An array of `AiSdk\ModelDefinition` objects. Each object exposes:
+
+  | Property | Type | Description |
+  |----------|------|-------------|
+  | `id` | `string` | The model identifier (e.g. `'private/model:latest'`). |
+  | `metadata` | `array` | Raw metadata from the Ollama response. Contains `modified_at`, `size`, `digest`, and `details` keys when present on the server response. |
+</ResponseField>
+
+---
+
+### `Ollama::inspectModel()`
+
+```php
+public static function inspectModel(string $modelId): ModelDefinition
+```
+
+Calls the Ollama server's `/api/show` endpoint for the specified model and returns a `ModelDefinition` with mapped SDK capabilities and full metadata. Capability mapping translates Ollama's native capability strings (`completion`, `vision`, `tools`, `thinking`, `embedding`, `image`) into typed `AiSdk\Capability` enum values. See [Model Discovery](/guides/model-discovery) for the full mapping table.
+
+<ParamField body="modelId" type="string" required>
+  The model identifier to inspect (e.g. `'llava'`, `'llama3.2'`).
+</ParamField>
+
+<ResponseField name="return" type="ModelDefinition">
+  An `AiSdk\ModelDefinition` object. Key properties:
+
+  | Property | Type | Description |
+  |----------|------|-------------|
+  | `id` | `string` | The queried model identifier. |
+  | `capabilities` | `array<int, Capability>` | Mapped SDK `Capability` enum values (e.g. `TextGeneration`, `ImageInput`, `ToolCalling`, `Reasoning`). |
+  | `adaptedCapabilities` | `array` | Contains `structured_output` strategy info when the model supports `completion`. |
+  | `metadata` | `array` | Raw Ollama metadata: `modified_at`, `details`, `model_info`, and `ollama_capabilities` (the original string array from the server). |
+</ResponseField>
+
+---
+
+### `Ollama::default()`
+
+```php
+public static function default(): OllamaProvider
+```
+
+Returns the current singleton `OllamaProvider`. If no provider has been configured yet, it lazily creates one by calling `Ollama::create()` with an empty config array (which applies defaults and reads from environment variables).
+
+<ResponseField name="return" type="OllamaProvider">
+  The active singleton `OllamaProvider` instance.
+</ResponseField>
+
+---
+
+### `Ollama::reset()`
+
+```php
+public static function reset(): void
+```
+
+Clears the singleton provider by setting the internal `$default` property to `null`. The next call to any static method that requires a provider will lazily re-initialize it. This method is essential in test suites to prevent state leaking between test cases.
+
+<ResponseField name="return" type="void" />
+
+---
+
+## Usage Examples
+
+```php
+// Configure once at bootstrap
+Ollama::create([
+    'baseUrl' => 'http://localhost:11434/v1',
+    'apiKey'  => 'optional-token',
+]);
+
+// Create a model reference
+$model = Ollama::model('llama3.2');
+
+// List installed models
+$models = Ollama::availableModels();
+foreach ($models as $model) {
+    echo $model->id . PHP_EOL;
+}
+
+// Inspect a model's capabilities
+$def = Ollama::inspectModel('llava');
+echo implode(', ', $def->capabilityNames());
+```
+
+**Test teardown** — always call `Ollama::reset()` in `afterEach` hooks alongside `Generate::reset()` to keep tests isolated:
+
+```php
+afterEach(function () {
+    Generate::reset();
+    Ollama::reset();
+});
+```
+
+**Using the Responses API** — switch the entire provider to Ollama's `/v1/responses` endpoint at creation time:
+
+```php
+Ollama::create(['api' => 'responses']);
+
+$result = Generate::text('Summarize this document.')
+    ->model(Ollama::model('llama3.2'))
+    ->run();
+```
+
+**Per-request API override** — keep the default `chat_completions` API but route a single request through the Responses API using provider options:
+
+```php
+Ollama::create(); // defaults to chat_completions
+
+Generate::text('Hi')
+    ->model(Ollama::model('llama3.2'))
+    ->providerOptions('ollama', ['api' => 'responses'])
+    ->run();
+```
+
+<Tip>
+  `Ollama::create()` should be called before any other facade methods in production code. Without it, the provider is lazily initialized with defaults — pointing at a local Ollama instance on `http://localhost:11434/v1` with no API key. In long-running processes or frameworks with a service container, call `Ollama::create()` once during the bootstrap phase to ensure your custom `baseUrl`, `apiKey`, and `headers` are in effect for every request.
+</Tip>

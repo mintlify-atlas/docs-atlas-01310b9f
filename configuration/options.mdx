@@ -1,0 +1,89 @@
+---
+title: "Configure the Ollama PHP SDK Provider: URLs and Options"
+sidebarTitle: "Options"
+description: "Configure the Ollama provider with custom base URLs, API selection, HTTP headers, and SDK instance binding using Ollama::create() or OllamaOptions::fromArray()."
+---
+
+The Ollama provider can be configured in two ways: through **environment variables** that are loaded automatically at runtime, or through **`Ollama::create(array $config)`** for programmatic control. Both approaches ultimately build an `OllamaOptions` instance (via `OllamaOptions::fromArray()`) that is stored as the process-level default and used by all subsequent provider calls.
+
+## Environment variables
+
+Set these variables in your environment or `.env` file. They are picked up automatically via `Env::loadOptionalSetting()` — no explicit call to `Ollama::create()` is needed when relying solely on environment configuration.
+
+| Variable | Description | Default |
+|---|---|---|
+| `OLLAMA_BASE_URL` | Base URL for the OpenAI-compatible API | `http://localhost:11434/v1` |
+| `OLLAMA_NATIVE_BASE_URL` | Base URL for native API endpoints (`/api/tags`, `/api/show`, `/api/embed`) | Derived by removing `/v1` from `OLLAMA_BASE_URL` |
+| `OLLAMA_API_KEY` | Optional bearer token | — |
+
+## Programmatic configuration
+
+Call `Ollama::create()` with an associative array of options. Any key you omit falls back to its environment variable or default value.
+
+```php
+use AiSdk\Ollama;
+
+Ollama::create([
+    'baseUrl'       => 'http://localhost:11434/v1',
+    'nativeBaseUrl' => 'http://localhost:11434',
+    'apiKey'        => 'optional-bearer-token',
+    'api'           => 'chat_completions', // or 'responses'
+    'headers'       => ['X-Custom-Header' => 'value'],
+]);
+```
+
+## Configuration options reference
+
+<ParamField body="baseUrl" type="string" optional>
+  Base URL for Ollama's OpenAI-compatible API. Trailing slashes are stripped automatically. Defaults to `http://localhost:11434/v1`. Can also be set via the `OLLAMA_BASE_URL` environment variable.
+</ParamField>
+
+<ParamField body="nativeBaseUrl" type="string" optional>
+  Base URL for Ollama's native REST endpoints (`/api/tags`, `/api/show`, `/api/embed`). Defaults to `baseUrl` with the `/v1` suffix removed. Can also be set via the `OLLAMA_NATIVE_BASE_URL` environment variable.
+</ParamField>
+
+<ParamField body="apiKey" type="string" optional>
+  Bearer token sent as `Authorization: Bearer <token>` on every request. Only needed for remote or password-protected Ollama servers. Can also be set via the `OLLAMA_API_KEY` environment variable. See [Authentication](/configuration/authentication).
+</ParamField>
+
+<ParamField body="api" type="string" optional>
+  Default API surface used for all text generation requests. One of `chat_completions` (default) or `responses`. Can be overridden per request. See [API Endpoints](/configuration/api-endpoints).
+</ParamField>
+
+<ParamField body="headers" type="array" optional>
+  Additional HTTP headers merged into every outbound request. When `apiKey` is also set, the `Authorization` header from `apiKey` is prepended first, so a conflicting `Authorization` entry in `headers` is overridden by `apiKey`.
+</ParamField>
+
+<ParamField body="sdk" type="Sdk" optional>
+  A custom `AiSdk\Support\Sdk` instance. Use this in tests or when you need to inject a custom HTTP client or PSR factory. When omitted, the SDK-level default (`Generate::sdk()`) is used.
+</ParamField>
+
+## Singleton behavior
+
+`Ollama::create()` stores the returned `OllamaProvider` as the process-level default. All static helper methods — `Ollama::model()`, `Ollama::availableModels()`, `Ollama::inspectModel()` — delegate to this singleton. If `Ollama::create()` has not been called yet, the first access to `Ollama::default()` auto-initialises a provider using only environment variables and built-in defaults.
+
+Call `Ollama::reset()` to clear the singleton, for example between test cases:
+
+```php
+use AiSdk\Ollama;
+
+// Store a custom provider for this test
+Ollama::create(['baseUrl' => 'http://localhost:11434/v1']);
+
+// ... run your test ...
+
+// Tear down
+Ollama::reset();
+```
+
+## Remote Ollama server
+
+Point the provider at an Ollama instance running on a remote host by overriding both URLs and supplying a bearer token:
+
+```php
+Ollama::create([
+    'baseUrl'       => 'https://ollama.example.com/v1',
+    'nativeBaseUrl' => 'https://ollama.example.com',
+    'apiKey'        => 'your-bearer-token',
+]);
+```
